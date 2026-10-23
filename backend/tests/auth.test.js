@@ -137,11 +137,20 @@ test('registration validates username, password, input types and confirmation', 
   ]) assert.equal((await request('/api/auth/register', body)).status, 400);
 });
 
-test('protected routes reject bad sessions and isolate account scan history', async () => {
+test('protected routes reject bad sessions and accept lowercase bearer tokens', async () => {
   for (const bearer of [undefined, 'bad-token', jwt.sign({ id: account._id }, process.env.JWT_SECRET, { expiresIn: -1 })]) {
     assert.equal((await request('/api/auth/me', undefined, bearer)).status, 401);
     assert.equal((await request('/api/scan/history', undefined, bearer)).status, 401);
   }
+
+  const lowercaseBearer = 'bearer ' + token;
+  const profile = await fetch(base + '/api/auth/me', {
+    method: 'GET',
+    headers: { Authorization: lowercaseBearer },
+  });
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).username, 'CollegeFarmer');
+
   await Scan.create([
     { userId: account._id, cropName: 'Tomato', diseaseDetected: 'Healthy' },
     { userId: new mongoose.Types.ObjectId(), cropName: 'Another user crop' },
