@@ -28,6 +28,27 @@ app.use(
 
 app.use(express.json());
 
+// Share one connection attempt across requests in each serverless instance.
+let databaseConnection;
+function ensureDatabase() {
+  if (!databaseConnection) {
+    databaseConnection = connectDB().catch((error) => {
+      databaseConnection = undefined;
+      throw error;
+    });
+  }
+  return databaseConnection;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDatabase();
+    next();
+  } catch {
+    res.status(503).json({ error: "Account service temporarily unavailable. Please try again later." });
+  }
+});
+
 // Routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/scan", require("./routes/scan"));
@@ -40,6 +61,15 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(() => {
-  app.listen(PORT, () => console.log("CropPilot API listening on port " + PORT));
-});
+// Vercel needs a handler immediately, before asynchronous database setup.
+module.exports = app;
+
+if (require.main === module) {
+  ensureDatabase()
+    .then(() => {
+      app.listen(PORT, () => console.log("CropPilot API listening on port " + PORT));
+    })
+    .catch(() => {
+      process.exitCode = 1;
+    });
+}
